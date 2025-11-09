@@ -1,37 +1,42 @@
 <script setup lang="ts">
 import "@/assets/main.css";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { ref } from "vue";
 
-const API_URL = "https://8j8uwfup9c.execute-api.us-east-1.amazonaws.com/default/add";
+const API_URL = "https://8j8uwfup9c.execute-api.us-east-1.amazonaws.com/default/add_user";
 
-const num1 = ref<string>("");
-const num2 = ref<string>("");
+const nameInput = ref<string>("");
 const loading = ref(false);
-const result = ref<number | null>(null);
+const message = ref<string | null>(null);
 const error = ref<string | null>(null);
 
 async function submitForm() {
   error.value = null;
-  result.value = null;
+  message.value = null;
 
-  const first = Number(num1.value);
-  const second = Number(num2.value);
-
-  if (isNaN(first) || isNaN(second)) {
-    error.value = "Please enter valid numbers.";
+  const trimmedName = nameInput.value.trim();
+  if (!trimmedName) {
+    error.value = "Please enter a name.";
     return;
   }
 
   loading.value = true;
   try {
+    const { tokens } = await fetchAuthSession();
+    const idToken = tokens?.idToken?.toString();
+
+    if (!idToken) {
+      throw new Error("Auth session missing ID token.");
+    }
+
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        num1: first,
-        num2: second,
+        name: trimmedName,
       }),
     });
 
@@ -40,18 +45,12 @@ async function submitForm() {
     }
 
     const data = (await response.json()) as unknown;
-    console.log("data from API", data);
 
-    if (
-      typeof data !== "object" ||
-      data === null ||
-      !("result" in data) ||
-      typeof (data as { result: unknown }).result !== "number"
-    ) {
+    if (typeof data !== "string") {
       throw new Error("Unexpected response from server.");
     }
 
-    result.value = (data as { result: number }).result;
+    message.value = data;
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Something went wrong.";
   } finally {
@@ -62,22 +61,18 @@ async function submitForm() {
 
 <template>
   <main class="addition-form">
-    <h1>Number Adder</h1>
+    <h1>Say Hello</h1>
     <form @submit.prevent="submitForm">
       <label>
-        Number 1
-        <input v-model="num1" type="number" required />
-      </label>
-      <label>
-        Number 2
-        <input v-model="num2" type="number" required />
+        Name
+        <input v-model="nameInput" type="text" required />
       </label>
       <button type="submit" :disabled="loading">
-        {{ loading ? "Calculating..." : "Add Numbers" }}
+        {{ loading ? "Sending..." : "Submit" }}
       </button>
     </form>
 
-    <p v-if="result !== null" class="result">Result: {{ result }}</p>
+    <p v-if="message" class="result">{{ message }}</p>
     <p v-if="error" class="error">{{ error }}</p>
   </main>
 </template>
